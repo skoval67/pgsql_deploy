@@ -1,4 +1,4 @@
-## Инфраструктура для тестового казино
+## Инфраструктура
 
 ### Terraform
 Инициализировать переменную `export TF_VAR_gcp_token=$(gcloud auth print-access-token)`
