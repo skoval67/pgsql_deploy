@@ -1,0 +1,170 @@
+- name: Create certificates
+  delegate_to: "{{ LOGSTASH_HOST }}"
+  become: true
+  become_user: root
+  become_method: sudo
+  vars:
+    ansible_connection: ssh
+    ansible_port: 22
+  block:
+    - name: create directory ca/server
+      file:
+        path: "{{ item }}"
+        state: directory
+        recurse: yes
+      loop:
+        - "{{ CERT_PATH }}/ca"
+        - "{{ CERT_PATH }}/server"
+      run_once: true
+    - name: create directory client certificates
+      file:
+        path: "{{ item }}"
+        state: directory
+        recurse: yes
+      loop:
+        - "{{ CERT_PATH }}/{{ ansible_hostname }}"
+
+    ##############################################################################################
+    #                             CREATE CA CERT AND KEY                                         #
+    ##############################################################################################
+    - name: create ca_key
+      openssl_privatekey:
+        path: "{{ CERT_PATH }}/ca/ca-key.pem"
+      run_once: true
+      register: ca_key
+    - name: create ca_csr
+      openssl_csr:
+        path: "{{ CERT_PATH }}/ca/ca.csr"
+        privatekey_path: "{{ ca_key.filename }}"
+        common_name: "{{ LOGSTASH_DNS_NAME }}"
+        key_usage:
+          - keyCertSign
+          - cRLSign
+          - digitalSignature
+        basic_constraints:
+          - CA:TRUE
+      run_once: true
+      register: ca_csr
+    - name: create ca_crt
+      openssl_certificate:
+        path: "{{ CERT_PATH }}/ca/ca.crt"
+        csr_path: "{{ ca_csr.filename }}"
+        privatekey_path: "{{ ca_key.filename }}"
+        provider: selfsigned
+      run_once: true
+      register: ca_crt
+    ##############################################################################################
+    #                             CREATE SERVER CERT AND KEY                                     #
+    ##############################################################################################
+    - name: create server_key
+      openssl_privatekey:
+        path: "{{ CERT_PATH }}/server/server.key"
+        passphrase: "{{ PASSPHRASE_SERVER_KEY }}"
+        cipher: auto #aes256
+      run_once: true
+      register: server_key
+    - name: convert server_key
+      command: openssl pkcs8 -in server.key -topk8  -v1 PBE-SHA1-RC2-128 -passin pass:{{ PASSPHRASE_SERVER_KEY }} -outform PEM -passout pass:{{ PASSPHRASE_SERVER_KEY }} -out server.pem
+      args:
+        chdir: "{{ CERT_PATH }}/server/" 
+      run_once: true
+
+    - name: create server_csr
+      openssl_csr:
+        path: "{{ CERT_PATH }}/server/server.csr"
+        privatekey_path: "{{ server_key.filename }}"
+        privatekey_passphrase: "{{ PASSPHRASE_SERVER_KEY }}"
+        common_name: "{{ LOGSTASH_DNS_NAME }}"
+        subject_alt_name: 'IP:10.253.54.88,DNS:{{ LOGSTASH_DNS_NAME }}'
+      run_once: true
+      register: server_csr
+    - name: create server_crt
+      openssl_certificate:
+        path: "{{ CERT_PATH }}/server/server.crt"
+        csr_path: "{{ server_csr.filename }}"
+        ownca_path: "{{ ca_crt.filename }}"
+        ownca_privatekey_path: "{{ ca_key.filename }}"
+      #  has_expired: yes
+        provider: ownca
+      run_once: true
+      register: server_crt
+    - name: change chowner
+      file:
+        path: "{{ CERT_PATH }}/server/"
+        state: directory
+        recurse: yes
+        owner: 1000
+        group: 1000
+    ##############################################################################################
+    #                             CREATE CLIENT CERT AND KEY                                     #
+    ##############################################################################################
+    - name: create client_key
+      openssl_privatekey:
+        path: "{{ CERT_PATH }}/{{ ansible_hostname }}/{{ ansible_hostname }}.pem"
+    - name: create client_csr
+      openssl_csr:
+        path: "{{ CERT_PATH }}/{{ ansible_hostname }}/{{ ansible_hostname }}.csr"
+        privatekey_path: "{{ CERT_PATH }}/{{ ansible_hostname }}/{{ ansible_hostname }}.pem"
+        common_name: "{{ ansible_hostname }}"
+        #subject_alt_name: 'IP:{{ ansible_host }},DNS:fluentd.plumotech.com'
+      register: item_csr
+    - name: create client_crt
+      openssl_certificate:
+        path: "{{ CERT_PATH }}/{{ ansible_hostname }}/{{ ansible_hostname }}.crt"
+        csr_path: "{{ CERT_PATH }}/{{ ansible_hostname }}/{{ ansible_hostname }}.csr"
+        ownca_path: "{{ ca_crt.filename }}"
+        ownca_privatekey_path: "{{ ca_key.filename }}"
+      #  has_expired: yes
+        provider: ownca
+
+##############################################################################################
+#                             PREPARE CLIENT HOST                                            #
+##############################################################################################
+
+- name: Create cert folder
+  file:
+    path: "{{ CERT_PATH }}"
+    state: directory
+  when: ansible_os_family == 'Debian' or ansible_os_family == 'Ubuntu'
+
+- name: Create to host
+  delegate_to: "{{ LOGSTASH_HOST }}"
+  become: true
+  become_user: root
+  become_method: sudo
+  vars:
+    ansible_connection: ssh
+    ansible_port: 22
+  block:
+  - name: Fetch ca
+    ansible.builtin.fetch:
+      src: "{{ ca_crt.filename }}"
+      dest: "{{ role_path }}/cert/"
+      flat: true
+    run_once: true
+  - name: Fetch certdir from EFK
+    ansible.builtin.fetch:
+      src: "{{ CERT_PATH }}/{{ ansible_hostname }}/{{ item }}"
+      dest: "{{ role_path }}/cert/{{ ansible_hostname }}/"
+      flat: true
+    loop:
+      - "{{ ansible_hostname }}.crt"
+      - "{{ ansible_hostname }}.pem"
+
+##############################################################################################
+#                             COPY  CERTIFICATS--                                            #
+##############################################################################################
+############---COPY CERT TO LINUX CLIENT--############
+- block:
+  - name: Copy certs to beats(linux)
+    ansible.builtin.copy:
+      src: "{{ item }}"
+      dest: "{{ CERT_PATH }}"
+    loop:
+      - "{{ role_path }}/cert/ca.crt"
+      - "{{ role_path }}/cert/{{ ansible_hostname }}/{{ ansible_hostname }}.crt"
+  - name: Copy key to beats(linux)
+    ansible.builtin.copy:
+      src: "{{ role_path }}/cert/{{ ansible_hostname }}/{{ ansible_hostname }}.pem"
+      dest: "{{ CERT_PATH }}"
+      mode: "0400"

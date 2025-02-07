@@ -1,0 +1,7 @@
+---
+skip_list:
+  - var-naming[no-role-prefix]
+  - risky-file-permissions
+  - no-changed-when
+  - yaml[line-length]
+  - partial-become

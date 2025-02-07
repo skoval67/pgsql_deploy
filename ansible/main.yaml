@@ -1,0 +1,38 @@
+---
+- name: Check all systems are ready
+  hosts: linux
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Wait for system to become reachable
+      ansible.builtin.wait_for_connection:
+
+- name: Configure Postgres database
+  hosts: db
+  become: true
+  vars_files: [vars.yaml]
+  vars:
+    tbl_space_path: /mnt/dbdata
+  roles:
+    - osupgrade
+    - prepare
+    - pg_inst
+    - beats
+
+- name: Create users
+  hosts: db_dev
+  become: true
+  become_user: postgres
+  vars_files: [vars.yaml]
+  roles:
+    - db_users
+  tags: [never, dev]
+
+- name: Create users
+  hosts: db_prod
+  become: true
+  become_user: postgres
+  vars_files: [vars.yaml]
+  roles:
+    - db_users
+  tags: [never, prod]

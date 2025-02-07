@@ -1,0 +1,99 @@
+filebeat.queue.mem:
+  events: 65536
+
+filebeat.modules:
+  - module: postgresql
+    log:
+      enabled: true
+      var.paths: ["/var/log/postgresql/*.log*"]
+  - module: system
+    syslog:
+      enabled: true
+    auth:
+      enabled: true
+
+filebeat.config:
+    modules:
+      path: ${path.config}/modules.d/*.yml
+
+# Configure what outputs to use when sending the data collected by the beat.
+# Multiple outputs may be used.
+output:
+
+{% if filebeat_output_elasticsearch_enabled %}
+  ### Elasticsearch as output
+  elasticsearch:
+    # Array of hosts to connect to.
+    hosts: {{ filebeat_output_elasticsearch_hosts | to_json }}
+
+{% if filebeat_ssl_certificate_elasticsearch == 'yes' %}
+    ssl:
+      # certificate_authorities: ["{{ filebeat_ssl_dir }}/{{ filebeat_ssl_certificate_file | basename }}"]
+      certificate_authorities: ["{{ CERT_PATH }}/ca.crt"]
+
+      # certificate: "{{ filebeat_ssl_dir }}/{{ filebeat_ssl_certificate_file | basename }}"
+      certificate: "{{ CERT_PATH }}"
+
+      # key: "{{ filebeat_ssl_dir }}/{{ filebeat_ssl_key_file | basename}}"
+      key: "{{ CLIENT_KEY }}"
+
+      insecure: {{ filebeat_ssl_insecure }}
+
+{% endif %}
+{% endif %}
+
+{% if filebeat_output_logstash_enabled %}
+  logstash:
+    bulk_max_size: 4096
+    compression_level: 9
+    ttl: 120
+    timeout: 5m
+    loadbalance: true
+    hosts: ["{{ logstash_host }}:5049"]
+
+{% if filebeat_ssl_certificate_logstash == 'yes' %}
+    ssl:
+      # certificate_authorities: ["{{ filebeat_ssl_dir }}/{{ filebeat_ssl_certificate_file | basename }}"]
+      certificate_authorities: ["{{ CERT_PATH }}/ca.crt"]
+
+      # certificate: "{{ filebeat_ssl_dir }}/{{ filebeat_ssl_certificate_file | basename }}"
+      certificate: "{{ CLIENT_CERT }}"
+
+      # key: "{{ filebeat_ssl_dir }}/{{ filebeat_ssl_key_file | basename}}"
+      key: "{{ CLIENT_KEY }}"
+
+      insecure: {{ filebeat_ssl_insecure }}
+{% endif %}
+{% endif %}
+
+{% if filebeat_enable_logging %}
+logging:
+  level: {{ filebeat_log_level }}
+
+  # Enable file rotation with default configuration
+  to_files: true
+
+  # Do not log to syslog
+  to_syslog: false
+
+  files:
+    path: {{ filebeat_log_dir }}
+    name: {{ filebeat_log_filename }}
+    keepfiles: 7
+{% endif %}
+
+{% if filebeat_elastic_cloud_enabled %}
+# =============================== Elastic Cloud ================================
+cloud.id: {{ filebeat_elastic_cloud_id }}
+
+cloud.auth: {{ filebeat_elastic_cloud_username }}:{{ filebeat_elastic_cloud_password }}
+{% endif %}
+
+logging.metrics.enabled: false
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0640

@@ -1,0 +1,12 @@
+---
+- include_tasks: 
+    file: beats_ssl.yml
+    apply:
+      tags:
+        - filebeat
+  tags: filebeat
+
+- include_tasks:
+    file: filebeat.yml
+  # when: ansible_os_family == 'Debian' or ansible_os_family == 'Ubuntu'
+  tags: filebeat

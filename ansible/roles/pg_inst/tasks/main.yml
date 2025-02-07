@@ -1,0 +1,123 @@
+---
+# tasks file for pg_inst
+- name: Install packages
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - curl
+    - ca-certificates
+    - locales
+    - python3-psycopg2
+
+- name: One way to avoid apt_key once it is removed from your distro, armored keys should use .asc extension, binary should use .gpg
+  block:
+    - name: Add Postgres official GPG key
+      ansible.builtin.get_url:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        dest: /etc/apt/keyrings/apt.postgresql.org.asc
+
+    - name: Add Postgres APT repository
+      ansible.builtin.apt_repository:
+        repo: deb [signed-by=/etc/apt/keyrings/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main
+        state: present
+
+- name: Ensure all configured locales are present
+  community.general.locale_gen:
+    name: en_US.UTF-8
+    state: present
+
+- name: Update apt repo and install Postgres
+  ansible.builtin.apt:
+    update_cache: true
+    name: "postgresql-{{ postgres_version }}"
+    state: present
+
+- name: Allow world wide connection
+  community.postgresql.postgresql_pg_hba:
+    dest: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+    contype: host
+    users: all
+    source: 0.0.0.0/0
+    databases: all
+    method: scram-sha-256
+
+- name: Set password for the default PostgreSQL user
+  become_user: postgres
+  ansible.builtin.shell: 'psql -c "ALTER USER postgres WITH PASSWORD ''{{ postgres_password }}'';"'
+
+- name: Configure PostgreSQL. Set listen_addresses.
+  ansible.builtin.lineinfile:
+    dest: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    regexp: "listen_addresses ="
+    line: "listen_addresses = '0.0.0.0'"
+    state: present
+  notify: Restart postgresql
+
+- name: Set max_connections parameter
+  become_user: postgres
+  community.postgresql.postgresql_set:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+  loop: "{{ postgres_params }}"
+  notify: Restart postgresql
+
+- name: Change ownership, group and permissions of tablespace`s directory
+  ansible.builtin.file:
+    path: "{{ tbl_space_path }}"
+    owner: postgres
+    group: postgres
+    mode: '0755'
+
+- name: Create a new tablespace
+  become_user: postgres
+  community.postgresql.postgresql_tablespace:
+    name: tbs_casino
+    location: "{{ tbl_space_path }}"
+
+- name: Create a database
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ db_name }}"
+    encoding: UTF-8
+    lc_collate: C.UTF-8
+    template: template0
+    tablespace: tbs_casino
+
+- name: Create roles
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    db: "{{ db_name }}"
+    name: "{{ item.rolename }}"
+    state: "{{ item.state }}"
+    role_attr_flags: NOLOGIN
+  loop: "{{ db_roles }}"
+
+- name: Grant ALL privilege to Developers role on the database
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    db: postgres
+    privs: ALL
+    type: database
+    obj: "{{ db_name }}"
+    role: developers
+
+- name: Grant ALL privilege to Developers role on schema public
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    type: schema
+    objs: public
+    database: "{{ db_name }}"
+    roles: developers
+    privs: ALL
+
+- name: Grant other roles access
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    type: table
+    objs: ALL_IN_SCHEMA
+    database: "{{ db_name }}"
+    roles: "{{ item.rolename }}"
+    grant_option: false
+    privs: "{{ item.privs }}"
+  loop: "{{ db_roles | rejectattr('rolename', 'match', 'developers') }}"

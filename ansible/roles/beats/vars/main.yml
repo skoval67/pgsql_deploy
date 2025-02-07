@@ -1,0 +1,12 @@
+---
+# include_vars: "{{ role }}.yml"
+FLUENTD_HOST: "10.253.54.85"
+LOGSTASH_HOST: "10.253.54.88"
+CERT_PATH: "/etc/ssl/plumo"
+CERT_PATH_WINDOWS: "C:/Program Files/Winlogbeat"
+FLUENTD_DNS_NAME: fluentd.plumotech.com
+LOGSTASH_DNS_NAME: logstash.plumotech.com
+CA: "{{ CERT_PATH }}/ca.crt"
+CLIENT_CERT: "{{ CERT_PATH }}/{{ ansible_hostname }}.crt"
+CLIENT_KEY: "{{ CERT_PATH }}/{{ ansible_hostname }}.pem"
+PASSPHRASE_SERVER_KEY: "{{ lookup('hashi_vault', 'secret=plumo/data/EFK:PASSPHRASE_SERVER_KEY token={{ VAULT_TOKEN }} url=https://vault.litota.tech validate_certs=True') }}"

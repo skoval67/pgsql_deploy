@@ -1,0 +1,24 @@
+---
+# vars file for pg_inst
+postgres_version: 16
+postgres_password: "{{ lookup('hashi_vault', 'secret=SoftSwiss/data/db:postgres_password token={{ VAULT_TOKEN }} url=https://vault.litota.tech validate_certs=True') }}"
+
+postgres_params:
+  - name: max_connections
+    value: 200
+  - name: shared_buffers
+    value: 1GB
+  - name: maintenance_work_mem
+    value: 256MB
+  - name: wal_buffers
+    value: 32MB
+  - name: effective_cache_size
+    value: 2560MB
+
+db_roles:
+  - rolename: developers
+    privs: ALL
+    state: present
+  - rolename: support
+    privs: SELECT
+    state: present

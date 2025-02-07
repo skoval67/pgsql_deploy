@@ -1,0 +1,55 @@
+---
+# tasks file for db_users
+- name: Define users for dev database
+  ansible.builtin.include_vars:
+    file: dev.yml
+  when: "'dev' in ansible_run_tags"
+
+- name: Define users for prod database
+  ansible.builtin.include_vars:
+    file: prod.yml
+  when: "'prod' in ansible_run_tags"
+
+- name: Create users
+  community.postgresql.postgresql_user:
+    db: "{{ db_name }}"
+    name: "{{ item.username }}"
+    password: "{{ item.password }}"
+    state: "{{ item.state }}"
+  loop: "{{ db_users }}"
+
+- name: Grant role to users
+  community.postgresql.postgresql_membership:
+    group: "{{ item.rolename }}"
+    target_roles: "{{ item.username }}"
+  loop: "{{ roles_map }}"
+
+- name: Alter default privileges on tables to developers role
+  community.postgresql.postgresql_privs:
+    type: default_privs
+    target_roles: "{{ item }}"
+    objs: TABLES
+    database: "{{ db_name }}"
+    roles: developers
+    privs: ALL
+  loop: "{{ roles_map | selectattr('rolename', 'match', 'developers') | map(attribute='username') }}"
+
+- name: Alter default privileges on sequences to developers role
+  community.postgresql.postgresql_privs:
+    type: default_privs
+    target_roles: "{{ item }}"
+    objs: SEQUENCES
+    database: "{{ db_name }}"
+    roles: developers
+    privs: ALL
+  loop: "{{ roles_map | selectattr('rolename', 'match', 'developers') | map(attribute='username') }}"
+
+- name: Alter default privileges on functions to developers role
+  community.postgresql.postgresql_privs:
+    type: default_privs
+    target_roles: "{{ item }}"
+    objs: FUNCTIONS
+    database: "{{ db_name }}"
+    roles: developers
+    privs: EXECUTE
+  loop: "{{ roles_map | selectattr('rolename', 'match', 'developers') | map(attribute='username') }}"

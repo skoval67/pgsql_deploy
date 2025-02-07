@@ -1,0 +1,26 @@
+---
+# tasks file for prepare
+- name: Create a new ext4 primary partition
+  community.general.parted:
+    device: /dev/sda
+    number: 1
+    state: present
+    fs_type: ext4
+
+- name: Create a ext4 filesystem on /dev/sda1
+  community.general.filesystem:
+    fstype: ext4
+    dev: /dev/sda1
+
+- name: Create a directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ tbl_space_path }}"
+    state: directory
+    mode: '0755'
+
+- name: Mount directory for postgresql tablespace
+  ansible.posix.mount:
+    path: "{{ tbl_space_path }}"
+    src: /dev/sda1
+    fstype: ext4
+    state: mounted

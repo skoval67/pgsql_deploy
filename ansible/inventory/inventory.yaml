@@ -1,0 +1,14 @@
+plugin: gcp_compute
+projects:
+  - gcp-project
+auth_kind: serviceaccount
+groups:
+  linux: "'linux' in tags['items']"
+  db: "'db' in tags['items']"
+  db-dev: "'dev' in tags['items'] and 'db' in tags['items']"
+  db-prod: "'prod' in tags['items'] and 'db' in tags['items']"
+
+service_account_file: inventory/sa-file.json
+
+hostnames:
+  - private_ip

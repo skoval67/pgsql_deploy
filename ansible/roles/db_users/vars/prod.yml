@@ -1,0 +1,25 @@
+---
+# vars file for db_users
+db_users:
+  - username: casino
+    password: "{{ lookup('hashi_vault', 'secret=SoftSwiss/data/db_prod:casino token={{ VAULT_TOKEN }} url=https://vault.litota.tech validate_certs=True') }}"
+    state: present
+  - username: amoiseev
+    password: "{{ lookup('hashi_vault', 'secret=SoftSwiss/data/db_prod:amoiseev token={{ VAULT_TOKEN }} url=https://vault.litota.tech validate_certs=True') }}"
+    state: present
+  - username: dalexandrov
+    password: ""
+    state: absent
+  - username: vkomashka
+    password: ""
+    state: absent
+  - username: isedova
+    password: "{{ lookup('hashi_vault', 'secret=SoftSwiss/data/db_prod:isedova token={{ VAULT_TOKEN }} url=https://vault.litota.tech validate_certs=True') }}"
+    state: present
+
+roles_map:
+  - { rolename: "developers", username: casino }
+  - { rolename: "developers", username: amoiseev }
+  - { rolename: "developers", username: isedova }
+  # - { rolename: "developers", username: dalexandrov }
+  # - { rolename: "developers", username: vkomashka }
